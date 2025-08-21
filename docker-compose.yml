@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:latest
+    container_name: synthesiot_mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword    # mot de passe root (change si besoin)
+      MARIADB_DATABASE: synthesiot           # base de données à créer
+      MARIADB_USER: synthuser                 # utilisateur BDD
+      MARIADB_PASSWORD: synthpass             # mot de passe utilisateur
+    ports:
+      - "3307:3306"                           # port hôte : port conteneur
+    volumes:
+      - mariadb_synthesiot_data:/var/lib/mysql  # volume persistant
+
+volumes:
+  mariadb_synthesiot_data:
