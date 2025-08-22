@@ -3,3 +3,9 @@ mysql-connector-python
 python-dotenv
 pandas
 fastapi
+scikit-learn
+transformers
+torch
+protobuf
+tiktoken
+sentencepiece

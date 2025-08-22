@@ -5,12 +5,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration globale
-openai_client = openai.AsyncOpenAI(
+client = openai.AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url=os.getenv("OPENAI_API_BASE")
 )
-
-openai_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+Embedding_model = os.getenv("EMBEDDING_MODEL")
+LLM_model = os.getenv("LLM_MODEL")
 
 
 def check_config():

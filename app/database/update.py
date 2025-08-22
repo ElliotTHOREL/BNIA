@@ -1,5 +1,6 @@
 from app.connection import get_db_cursor
 import pandas as pd
+from app.domain.embed import embed_answers
 
 def import_excel_to_bdd(file_path: str):
     name = file_path.split("/")[-1]
@@ -56,10 +57,6 @@ def import_excel_to_bdd(file_path: str):
             INSERT INTO reponse (id_question, id_repondant, reponse)
             VALUES (%s, %s, %s)
         """, response_data)
-        
-
-
-
 
 def switch_type_question(id_question: int):
     with get_db_cursor() as cursor:
@@ -76,4 +73,30 @@ def switch_type_question(id_question: int):
     with get_db_cursor() as cursor:
         cursor.execute("""UPDATE question SET type = %s WHERE id = %s""",
             (new_type, id_question))
+
+def rename_document(id_document: int, new_name: str):
+    with get_db_cursor() as cursor:
+        cursor.execute("""UPDATE document SET name = %s WHERE id = %s""",
+            (new_name, id_document))
+
+async def embed_all_answers(client, modele_embedding, modele_llm):
+    with get_db_cursor() as cursor:
+        cursor.execute("""SELECT id, texte 
+                            FROM texte_reponse 
+                            WHERE traite = FALSE""")
+        liste_tuples = cursor.fetchall()
+        liste_ids_answers = [tuple[0] for tuple in liste_tuples]
+        liste_answers = [tuple[1] for tuple in liste_tuples]
+
+        liste_results = await embed_answers(liste_answers, client, modele_embedding, modele_llm)
+        #Une liste de triplets (indice_reponse, texte, embed)
+
+        for indice_reponse, texte, embed in liste_results:
+            cursor.execute("""INSERT INTO idee_embedded
+                            (id_reponse, idee_texte, idee_embed)
+                            VALUES (%s, %s, %s)""",
+                            (liste_ids_answers[indice_reponse], texte, embed))
+
+        cursor.execute("""UPDATE texte_reponse SET traite = TRUE""")   
+
 
