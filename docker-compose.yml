@@ -10,7 +10,7 @@ services:
       MARIADB_USER: synthuser                 # utilisateur BDD
       MARIADB_PASSWORD: synthpass             # mot de passe utilisateur
     ports:
-      - "3307:3306"                           # port hôte : port conteneur
+      - "3317:3316"                           # port hôte : port conteneur
     volumes:
       - mariadb_synthesiot_data:/var/lib/mysql  # volume persistant
 
