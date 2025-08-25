@@ -9,3 +9,5 @@ torch
 protobuf
 tiktoken
 sentencepiece
+accelerate
+hdbscan
