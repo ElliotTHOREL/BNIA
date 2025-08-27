@@ -11,3 +11,11 @@ tiktoken
 sentencepiece
 accelerate
 hdbscan
+streamlit
+python-multipart
+uvicorn
+openpyxl
+plotly
+wordcloud
+streamlit_plotly_events
+anywidget

@@ -96,12 +96,14 @@ def init_bdd():
             taille INT,
             score FLOAT,
             FOREIGN KEY (id_clusterisation) REFERENCES clusterisation(id) ON DELETE CASCADE
+        )
         """)
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS jointure_cluster_idees(
             id_cluster INT,
             id_idee INT,
+            occurrences INT,
             FOREIGN KEY (id_cluster) REFERENCES cluster(id) ON DELETE CASCADE,
             FOREIGN KEY (id_idee) REFERENCES idee_embedded(id) ON DELETE CASCADE
         )

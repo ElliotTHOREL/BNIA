@@ -38,7 +38,7 @@ def clusterisation(liste_idees_embed, n_clusters=None, distance="cosine"):
         raise ValueError(f"Distance {distance} non supportée")
 
     if n_clusters is None:
-        clusterer = HDBSCAN(min_cluster_size=5)
+        clusterer = HDBSCAN(min_cluster_size=50)
         labels = clusterer.fit_predict(used_embeddings)
         centroids = compute_hdbscan_centroids(used_embeddings, labels)
         return labels, centroids
@@ -91,12 +91,16 @@ def find_representative_idea(liste_idees_embed, labels, centroids, distance="cos
             score += scores[id_label]
             distance_to_centroid = np.linalg.norm(used_embeddings[id_label] - used_centroids[cluster_id], ord=2)
             len_text = len_texte[id_label]
-            metrique = distance_to_centroid * len_text
-            if metrique < best_metrique:
+            if len_text > 2:
+                L= max(10,len_texte[id_label])
+                metrique = distance_to_centroid * L * L
+            else:
+                metrique = np.inf
+            if metrique <= best_metrique:
                 best_metrique = metrique
                 best_id_label = id_label
 
         score /= len(id_labels)
-        representative_ideas.append((textes[best_id_label]), len(id_labels), score)
+        representative_ideas.append( (textes[best_id_label], len(id_labels), score)  ) 
 
     return representative_ideas

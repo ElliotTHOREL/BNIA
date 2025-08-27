@@ -8,9 +8,9 @@ def create_clusterisation(liste_id_doc, liste_id_question, nb_clusters=None, dis
         for question in liste_id_question:
             liste_idees.extend(get_all_idees(doc, question))
 
-    ids, _, _, _ = zip(*liste_idees)
+    ids, _, _, _,  = zip(*liste_idees)
 
-    labels, centroids = clusterisation(liste_idees, distance=distance)
+    labels, centroids = clusterisation(liste_idees,n_clusters=nb_clusters, distance=distance)
     rep_idees = find_representative_idea(liste_idees, labels, centroids, distance=distance)
 
     with get_db_cursor() as cursor:
@@ -39,25 +39,29 @@ def create_clusterisation(liste_id_doc, liste_id_question, nb_clusters=None, dis
             id_cluster = cursor.lastrowid
             dico_num_cluster[num_cluster] = id_cluster
 
-        data = [
-            (dico_num_cluster[labels[i]], id_idee)
-            for i, id_idee in enumerate(ids)
-        ]
+        dico_idee_cluster = {}
+        def ajouter_idee_cluster(id_idee, num_cluster):
+            if id_idee not in dico_idee_cluster:
+                dico_idee_cluster[id_idee] = {num_cluster: 1}
+            elif num_cluster not in dico_idee_cluster[id_idee]:
+                dico_idee_cluster[id_idee][num_cluster] = 1
+            else:
+                dico_idee_cluster[id_idee][num_cluster] += 1
+
+        for i, id_idee in enumerate(ids):
+            if labels[i] != -1:
+                ajouter_idee_cluster(id_idee, dico_num_cluster[labels[i]])
+
+        data = []
+        for id_idee, dico_cluster in dico_idee_cluster.items():
+            for num_cluster, occurrences in dico_cluster.items():
+                data.append((num_cluster, id_idee, occurrences))
 
         cursor.executemany("""
-            INSERT INTO jointure_cluster_idees (id_cluster, id_idee)
-            VALUES (%s, %s)
+            INSERT INTO jointure_cluster_idees (id_cluster, id_idee, occurrences)
+            VALUES (%s, %s, %s)
         """, data)
 
-    return {
-        "status": "success",
-        "id_clusterisation": id_clusterisation,
-        "id_questions": liste_id_question,
-        "id_documents": liste_id_doc,
-        "auto_number": nb_clusters is None,
-        "nb_clusters": len(rep_idees),
-        "nb_idees": len(ids),
-        "distance": distance
-    }
+    return id_clusterisation
         
 

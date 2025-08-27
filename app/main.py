@@ -1,9 +1,16 @@
 from app.routes import all_routers
 from app.connection import initialize_pool
 from app.database.create import init_bdd
+from app.config import configu
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+import uvicorn
 import os
 import logging
 
@@ -19,24 +26,29 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger(__name__)
+
+
 
 def create_app() -> FastAPI:
     app = FastAPI()
 
-    origins = [
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "https://a0ea2ec6-2a5a-406b-92fe-9eb840a3c23f.lovableproject.com",
-    ]
+    for key, value in configu().items():
+        setattr(app.state, key, value)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+
+    # origins = [
+    #     "http://localhost:8080",
+    #     "http://127.0.0.1:8080",
+    #     "https://a0ea2ec6-2a5a-406b-92fe-9eb840a3c23f.lovableproject.com",
+    # ]
+
+    # app.add_middleware(
+    #     CORSMiddleware,
+    #     allow_origins=origins,
+    #     allow_credentials=True,
+    #     allow_methods=["*"],
+    #     allow_headers=["*"],
+    # )
 
     # Initialisation DB
     initialize_pool()
@@ -46,7 +58,11 @@ def create_app() -> FastAPI:
     for router, prefix in all_routers:
         app.include_router(router, prefix=prefix)
 
-    logger.info("Application FastAPI démarrée ✅")
+    logging.info("Application FastAPI démarrée ✅")
     return app
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=int(os.getenv("PORT_API")), reload=False)
