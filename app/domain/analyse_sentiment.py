@@ -16,17 +16,11 @@ def analyse_sentiment(textes: list[str], sentiment_analyzer):
         for result in results
     ]
 
-if __name__ == "__main__":
-    model_name = os.getenv("SENTIMENT_MODEL")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(model_name)
+def analyse_sentiment_with_ai_manager(textes: list[str], ai_manager):
+    """
+    Entrée : liste de textes et AIManager
+    Sortie : liste de scores (entre 1 et 5)
+    """
+    sentiment_analyzer = ai_manager.get_sentiment_analyzer()
+    return analyse_sentiment(textes, sentiment_analyzer)
 
-    sentiment_analyzer = pipeline(
-        "sentiment-analysis",
-        model=model,
-        tokenizer=tokenizer,
-        device=-1,            # CPU
-        framework="pt",
-        top_k=None
-    )
-    print(analyse_sentiment(["peut mieux faire"],sentiment_analyzer))

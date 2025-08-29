@@ -28,11 +28,22 @@ def init_bdd():
         )
         """)
 
+        # Nouvelle structure: table texte_traite
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS texte_traite(
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            texte_traite TEXT NOT NULL,
+            UNIQUE (texte_traite)
+        )
+        """)
+
+        # Table texte_reponse avec référence vers texte_traite
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS texte_reponse(
             id INT AUTO_INCREMENT PRIMARY KEY,
-            texte TEXT,
-            traite BOOLEAN DEFAULT FALSE
+            id_texte_traite INT,
+            texte TEXT NOT NULL,
+            FOREIGN KEY (id_texte_traite) REFERENCES texte_traite(id) ON DELETE CASCADE
         )
         """)
 
@@ -48,25 +59,82 @@ def init_bdd():
         )
         """)
 
-
+        # Nouvelle structure: table idee_embedded sans id_reponse
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS idee_embedded(
             id INT AUTO_INCREMENT PRIMARY KEY,
-            id_reponse INT,
-            idee_texte TEXT,
-            idee_embed JSON,
-            score FLOAT,
-            FOREIGN KEY (id_reponse) REFERENCES texte_reponse(id)
-
+            idee_texte TEXT NOT NULL,
+            idee_embedded JSON NOT NULL,
+            score FLOAT
         )
         """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jointure_idee_texte(
+            id_texte_traite INT,
+            id_idee INT,
+            FOREIGN KEY (id_texte_traite) REFERENCES texte_traite(id) ON DELETE CASCADE,
+            FOREIGN KEY (id_idee) REFERENCES idee_embedded(id) ON DELETE CASCADE,
+            UNIQUE KEY unique_jointure (id_texte_traite, id_idee)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exigence(
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            id_question INT,
+            FOREIGN KEY (id_question) REFERENCES question(id) ON DELETE CASCADE
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jointure_exigence_reponse(
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            id_exigence INT,
+            id_reponse INT,
+            FOREIGN KEY (id_exigence) REFERENCES exigence(id) ON DELETE CASCADE,
+            FOREIGN KEY (id_reponse) REFERENCES texte_reponse(id) ON DELETE CASCADE
+        )
+        """)
+
+
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS filtration(
+            id INT AUTO_INCREMENT PRIMARY KEY
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jointure_filtration_exigence(
+            id_filtration INT,
+            id_exigence INT,
+            FOREIGN KEY (id_filtration) REFERENCES filtration(id) ON DELETE CASCADE,
+            FOREIGN KEY (id_exigence) REFERENCES exigence(id) ON DELETE CASCADE
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jointure_filtration_document(
+            id_filtration INT,
+            id_document INT,
+            FOREIGN KEY (id_filtration) REFERENCES filtration(id) ON DELETE CASCADE,
+            FOREIGN KEY (id_document) REFERENCES document(id) ON DELETE CASCADE
+        )
+        """)
+
+
+
+
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS clusterisation(
             id INT AUTO_INCREMENT PRIMARY KEY,
             auto_number BOOLEAN,
             nb_clusters INT,
-            distance VARCHAR(255)
+            distance VARCHAR(255),
+            id_filtration INT,
+            FOREIGN KEY (id_filtration) REFERENCES filtration(id) ON DELETE CASCADE
         )
         """)
 
@@ -79,14 +147,6 @@ def init_bdd():
         )
         """)
 
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS jointure_clusterisation_document(
-            id_clusterisation INT,
-            id_document INT,
-            FOREIGN KEY (id_clusterisation) REFERENCES clusterisation(id) ON DELETE CASCADE,
-            FOREIGN KEY (id_document) REFERENCES document(id) ON DELETE CASCADE
-        )
-        """)
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS cluster(
@@ -108,3 +168,11 @@ def init_bdd():
             FOREIGN KEY (id_idee) REFERENCES idee_embedded(id) ON DELETE CASCADE
         )
         """)
+
+
+
+
+        cursor.execute("""CREATE INDEX IF NOT EXISTS idx_reponse_id_question ON reponse (id_question)""")
+        cursor.execute("""CREATE INDEX IF NOT EXISTS idx_texte_reponse_id_texte_traite ON texte_reponse (id_texte_traite)""")
+        cursor.execute("""CREATE INDEX IF NOT EXISTS idx_jointure_idee_texte_id_texte_traite ON jointure_idee_texte (id_texte_traite)""")
+        cursor.execute("""CREATE INDEX IF NOT EXISTS idx_jointure_idee_texte_id_idee ON jointure_idee_texte (id_idee)""")

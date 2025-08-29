@@ -8,13 +8,14 @@ from dotenv import load_dotenv
 import logging
 load_dotenv()
 
-async def embed(ma_liste: list[str], client, modele):
-    return await client.embeddings.create(
-        input=ma_liste,
-        model=modele
-    )
 
-async def preprocess_with_llm(text: str, client, modele_llm):
+
+async def embed_with_ai_manager(ma_liste: list[str], ai_manager):
+    return await ai_manager.embedding(ma_liste)
+
+
+
+async def preprocess_with_ai_manager(text: str, ai_manager):
     """On preprocess le texte par LLM pour saisir les informations importantes"""
 
     prompt_system = """
@@ -37,16 +38,13 @@ async def preprocess_with_llm(text: str, client, modele_llm):
     {text}
     """
 
+    messages = [
+        {"role": "system", "content": prompt_system},
+        {"role": "user", "content": prompt_user}
+    ]
 
-    response = await client.chat.completions.create(
-        model=modele_llm,
-        messages=[
-            {"role": "system", "content": prompt_system},
-            {"role": "user", "content": prompt_user}
-        ],
-    )
-
-    return parse_llm_list_response(response.choices[0].message.content)
+    response_content = await ai_manager.LLM_treatment(messages)
+    return parse_llm_list_response(response_content)
 
 
 class To_embed:
@@ -69,7 +67,9 @@ class To_embed:
             self.current_batch.append(answer)
             self.current_batch_size += len(answer)
 
-    async def embed(self, client, modele_embedding):
+
+
+    async def embed_with_ai_manager(self, ai_manager):
         self.batches.append(self.current_batch)
         self.current_batch = []
         self.current_batch_size = 0
@@ -80,7 +80,7 @@ class To_embed:
                 logging.warning("Essai d'embed sur une liste vide")
                 print(f"batch {i} est vide")
                 continue
-            result = await embed(batch, client, modele_embedding)
+            result = await ai_manager.embedding(batch)
             brute_results.append(result)
         embed_results = [
             np.array(item.embedding)
@@ -91,27 +91,34 @@ class To_embed:
 
 
 
+async def process_answer_with_semaphore(answer: str, ai_manager, semaphore):
+    async with semaphore:
+        return await process_answer(answer, ai_manager)
 
 
+async def process_answer(answer: str, ai_manager):
+    if answer == "" or answer is None:
+        return []
+    elif len(answer) < 40 :#limit_batch_size: #si la réponse est courte, on la considère comme une seule idée
+        return [answer]
+    else:   #si la réponse est longue, on la découpe en idées
+        return await preprocess_with_ai_manager(answer, ai_manager)
 
-async def embed_answers(answers: list[str], client, modele_embedding, modele_llm, limit_batch_size=1300):
+async def embed_answers_with_ai_manager(answers: list[str], ai_manager, limit_batch_size=1300):
     """prend en entrée une liste de réponses texte) 
      renvoie une liste de tuples (indice_segment, texte, embed)"""
 
     to_embed = To_embed(limit_batch_size)
-    liste_segments = []
-    for i, answer in enumerate(answers):
-        if answer == "" or answer is None:
-            segments = []
-        elif len(answer) < limit_batch_size: #si la réponse est courte, on la considère comme une seule idée
-            segments = [answer]
-        else:   #si la réponse est longue, on la découpe en idées
-            segments = await preprocess_with_llm(answer, client, modele_llm)
 
-        liste_segments.append(segments)
-        to_embed.add_segment(segments) #liste de toutes les idées à embedder
+    print("FEU!")
+    semaphore = asyncio.Semaphore(5)
+    tasks = [process_answer_with_semaphore(answer, ai_manager, semaphore) for answer in answers]
+    liste_segments = await asyncio.gather(*tasks)
 
-    embed_results = await to_embed.embed(client, modele_embedding)
+    for segments in liste_segments:
+        to_embed.add_segment(segments)
+
+    embed_results = await to_embed.embed_with_ai_manager(ai_manager)
     n = len(embed_results)
 
     indice_idee=0 #indice de l'idée
@@ -130,20 +137,3 @@ async def embed_answers(answers: list[str], client, modele_embedding, modele_llm
                         #                          ......
                         #                       - idée n -> embed
 
-if __name__ == "__main__":
-    client = openai.AsyncOpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_API_BASE")
-    )
-    import asyncio
-
-    async def main():
-        to_embed = ["test", "test2", "test3"]
-        brute_results = []
-        for idee in to_embed:
-            brute_results.append((await embed([idee], client, os.getenv("EMBEDDING_MODEL"))))
-        embed_results = [np.array(res.data[0].embedding) for res in brute_results]
-        print(embed_results)
-
-
-    asyncio.run(main())

@@ -1,8 +1,8 @@
-from app.database.read import get_all_documents, get_all_questions, get_all_idees_in_cluster
-from app.database.update import import_excel_to_bdd, rename_document, embed_all_answers, analyse_sentiment_all_ideas, rescorer_idee
-from app.database.delete import  delete_one_document, reset_all
+from app.database.read import get_all_documents, get_all_questions, get_all_idees_in_cluster, get_possible_answers
+from app.database.update import import_excel_to_bdd, rename_document, embed_all_answers, analyse_sentiment_all_ideas, rescorer_idee, switch_type_question, merge_questions
+from app.database.delete import  delete_one_document, reset_all, delete_one_question
 
-from fastapi import APIRouter, UploadFile, File, Request
+from fastapi import APIRouter, UploadFile, File, Request, Body
 
 
 router = APIRouter()
@@ -19,6 +19,11 @@ async def get_questions():
 async def get_idees_in_cluster(id_cluster: int):
     return get_all_idees_in_cluster(id_cluster)
 
+@router.get("/possible_answers")
+async def get_possible_answers_route(id_question: int):
+    return get_possible_answers(id_question)
+
+
 @router.post("/rescorer_idee")
 async def rescorer_idee_route(id_idee: int, idee_score: float):
     return rescorer_idee(id_idee, idee_score)
@@ -27,6 +32,18 @@ async def rescorer_idee_route(id_idee: int, idee_score: float):
 async def rename_doc(id: int, new_name: str):
     return rename_document(id, new_name)
 
+@router.post("/switch_question_type")
+async def switch_question_type_route(id_question: int):
+    return switch_type_question(id_question)
+
+@router.post("/merge_questions")
+async def merge_questions_route(data: dict = Body(...)):
+    liste_id_questions = data.get("liste_id_questions")
+    new_question = data.get("new_question")
+    return merge_questions(liste_id_questions, new_question)
+
+
+
 @router.post("/import_excel")
 async def import_excel(file: UploadFile = File(...)):
     return await import_excel_to_bdd(file)
@@ -34,32 +51,30 @@ async def import_excel(file: UploadFile = File(...)):
 
 @router.post("/extraire_idees")
 async def extraire_idees(request: Request):
-    client = request.app.state.client
-    modele_embedding = request.app.state.Embedding_model
-    modele_llm = request.app.state.LLM_model
-    return await embed_all_answers(client, modele_embedding, modele_llm)
+    ai_manager = request.app.state.aimanager
+    return await embed_all_answers(ai_manager)
 
 @router.post("/analyse_sentiment")
 async def analyse_sentiment(request:Request):
-    sentiment_analyzer = request.app.state.sentiment_analyzer
-    return analyse_sentiment_all_ideas(sentiment_analyzer)
+    ai_manager = request.app.state.aimanager
+    return analyse_sentiment_all_ideas(ai_manager)
 
 
 @router.post("/import_excel_complete")
 async def import_excel_complete(request: Request, file: UploadFile = File(...)):
-    client = request.app.state.client
-    modele_embedding = request.app.state.Embedding_model
-    modele_llm = request.app.state.LLM_model
-    sentiment_analyzer = request.app.state.sentiment_analyzer
+    ai_manager = request.app.state.aimanager
     await import_excel_to_bdd(file)
-    await embed_all_answers(client, modele_embedding, modele_llm)
-    analyse_sentiment_all_ideas(sentiment_analyzer)
+    await embed_all_answers(ai_manager)
+    analyse_sentiment_all_ideas(ai_manager)
     return {"status": "imported", "name": file.filename}
 
 @router.delete("/delete_one_document")
 async def delete_document(id_document: int):
     return delete_one_document(id_document)
 
+@router.delete("/delete_one_question")
+async def delete_question_route(id_question: int):
+    return delete_one_question(id_question)
 
 @router.delete("/reset_all")
 async def reset_all_route():

@@ -1,67 +1,55 @@
-from app.database.read import get_all_idees
-from app.domain.clusterisation import clusterisation, find_representative_idea
-from app.connection import get_db_cursor
+from app.database.read import get_exigence, get_filtration, get_scores, get_clusterisation, get_clusters
+from app.database.update import create_exigence, create_filtration, create_clusterisation
 
-def create_clusterisation(liste_id_doc, liste_id_question, nb_clusters=None, distance="cosine"):
-    liste_idees=[]
-    for doc in liste_id_doc:
-        for question in liste_id_question:
-            liste_idees.extend(get_all_idees(doc, question))
 
-    ids, _, _, _,  = zip(*liste_idees)
+       
 
-    labels, centroids = clusterisation(liste_idees,n_clusters=nb_clusters, distance=distance)
-    rep_idees = find_representative_idea(liste_idees, labels, centroids, distance=distance)
+async def find_clusterisation(liste_id_doc, liste_id_question, questions_filtrees, filtres, nb_clusters, distance, ai_manager):
 
-    with get_db_cursor() as cursor:
-        cursor.execute("""INSERT INTO clusterisation (auto_number, nb_clusters, distance)
-            VALUES (%s, %s, %s)
-            """, (nb_clusters is None, len(rep_idees), distance))
-        id_clusterisation = cursor.lastrowid
+    if nb_clusters == 0:
+        nb_clusters = None
 
-        for doc in liste_id_doc:
-            cursor.execute("""
-            INSERT INTO jointure_clusterisation_document (id_clusterisation, id_document)
-            VALUES (%s, %s)
-            """, (id_clusterisation, doc))
-        for question in liste_id_question:
-            cursor.execute("""
-            INSERT INTO jointure_clusterisation_question (id_clusterisation, id_question)
-            VALUES (%s, %s)
-            """, (id_clusterisation, question))
+    drapeau_1=True
+    drapeau_2=True
 
-        dico_num_cluster = {}
-        for (num_cluster, (texte,taille,score)) in enumerate(rep_idees):
-            cursor.execute("""
-            INSERT INTO cluster (id_clusterisation, texte, taille, score)
-            VALUES (%s, %s, %s, %s)
-            """, (id_clusterisation, texte, taille, score))
-            id_cluster = cursor.lastrowid
-            dico_num_cluster[num_cluster] = id_cluster
+    nb_filtres = len(questions_filtrees)
+    liste_id_exigences=[]
+    for i in range(nb_filtres):
+        id_exigence = get_exigence(questions_filtrees[i], filtres[i])
+        if id_exigence is None:
+            id_exigence = create_exigence(questions_filtrees[i], filtres[i])
+            drapeau_1 = False
+        liste_id_exigences.append(id_exigence)
 
-        dico_idee_cluster = {}
-        def ajouter_idee_cluster(id_idee, num_cluster):
-            if id_idee not in dico_idee_cluster:
-                dico_idee_cluster[id_idee] = {num_cluster: 1}
-            elif num_cluster not in dico_idee_cluster[id_idee]:
-                dico_idee_cluster[id_idee][num_cluster] = 1
-            else:
-                dico_idee_cluster[id_idee][num_cluster] += 1
+    if drapeau_1: # Si on vient de créer une exigence, ce n'est pas le peine de chercher une filtration qui la contient
+        id_filtration = get_filtration(liste_id_doc, liste_id_exigences)
+    if not drapeau_1 or id_filtration is None:
+        id_filtration = create_filtration(liste_id_doc,liste_id_exigences)
+        drapeau_2 = False
 
-        for i, id_idee in enumerate(ids):
-            if labels[i] != -1:
-                ajouter_idee_cluster(id_idee, dico_num_cluster[labels[i]])
 
-        data = []
-        for id_idee, dico_cluster in dico_idee_cluster.items():
-            for num_cluster, occurrences in dico_cluster.items():
-                data.append((num_cluster, id_idee, occurrences))
+    if drapeau_2:# Si on vient de créer la filtration, ce n'est pas le peine de chercher la clusterisation
+        id_clusterisation = get_clusterisation(liste_id_question, id_filtration, nb_clusters, distance)
+    if not drapeau_2 or id_clusterisation is None:
+        id_clusterisation = await create_clusterisation(liste_id_question, id_filtration, ai_manager, nb_clusters, distance)
+    
+    
+    if id_clusterisation == -1:
+        return {
+            "status": "failure pas assez d'idées",
+            "scores": [],
+            "id_clusterisation": None,
+            "clusters": [],
+        }
 
-        cursor.executemany("""
-            INSERT INTO jointure_cluster_idees (id_cluster, id_idee, occurrences)
-            VALUES (%s, %s, %s)
-        """, data)
+    else:
+        scores = get_scores(liste_id_question, id_filtration)
+        clusters = get_clusters(id_clusterisation)
 
-    return id_clusterisation
-        
-
+        return {
+            "status": "success",
+            "scores": scores,
+            "id_clusterisation": id_clusterisation,
+            "clusters": clusters,
+        }
+    

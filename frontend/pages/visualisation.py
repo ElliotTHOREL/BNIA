@@ -3,6 +3,7 @@ from streamlit_plotly_events import plotly_events
 
 import requests
 from config import API_BASE  # Import depuis config.py
+from tools import get_questions, get_documents, get_possible_answers
 
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
@@ -13,6 +14,73 @@ import pandas as pd
 
 
 st.set_page_config(layout="wide")
+
+
+
+st.markdown("""
+<style>
+    /* Tags qui s'adaptent au contenu sans tronquer */
+    .stMultiSelect span[data-baseweb="tag"] {
+        /* Taille adaptative */
+        width: auto !important;
+        min-width: auto !important;
+        max-width: none !important;
+        height: auto !important;
+        min-height: 40px !important;
+        
+        /* Espacement généreux */
+        padding: 12px 20px !important;
+        margin: 6px !important;
+        
+        /* Texte non tronqué */
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        word-wrap: break-word !important;
+        
+        /* Apparence */
+        background-color: #4a90e2 !important;
+        color: white !important;
+        border-radius: 20px !important;
+        
+        /* Flexbox pour bon alignement */
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        flex-wrap: wrap !important;
+        
+        /* Taille de police */
+        font-size: 14px !important;
+        line-height: 1.4 !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Texte du tag - s'étend pour tout afficher */
+    .stMultiSelect span[data-baseweb="tag"] span:first-child {
+        flex: 1 1 auto !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow: visible !important;
+        text-align: left !important;
+        max-width: none !important;
+    }
+    
+    /* Bouton de suppression */
+    .stMultiSelect span[data-baseweb="tag"] span[role="presentation"] {
+        flex-shrink: 0 !important;
+        margin-left: 10px !important;
+        font-size: 16px !important;
+    }
+    
+    /* Conteneur principal pour éviter les conflits */
+    .stMultiSelect > div > div > div {
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
 
 # Fonction pour créer des intervalles de scores
 def create_score_bins(scores, num_bins):
@@ -76,22 +144,8 @@ def create_gradient_pie_chart(scores):
     
     plt.tight_layout()
     
-    # Afficher le graphique dans Streamlit
-    st.pyplot(fig)
     
-    # Afficher quelques statistiques
-    st.subheader("Statistiques")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Nombre total", f"{total_count:,}")
-    with col2:
-        st.metric("Score moyen", f"{np.mean(scores):.2f}")
-    with col3:
-        st.metric("Score médian", f"{np.median(scores):.2f}")
-    with col4:
-        st.metric("Écart-type", f"{np.std(scores):.2f}")
-    
+    return (fig, total_count, np.mean(scores), np.median(scores), np.std(scores))
 
 
 
@@ -229,75 +283,50 @@ def create_bubble_chart(clusters):
 
     # Afficher le graphique et capturer les clics
     st.title("Idées principales")
-
-    st.plotly_chart(fig, use_container_width=True, key="bubble_chart")
-
-@st.dialog("Changer le score de l'idée")
-def show_rename_dialog(id_idee, idee_texte, idee_score):
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(idee_texte)
-    with col2:
-        new_score = st.slider(
-            "Score",
-            min_value=1.0,
-            max_value=5.0,
-            value=idee_score,
-            step=0.1,
-            format="%.1f"
-        )
-    if st.button("Valider"):
-        url = f"{API_BASE}/document/rescorer_idee"
-        params = {
-            "id_idee": id_idee,
-            "idee_score": new_score
-        }
-        _ = requests.post(url, params=params)
-        for idee in st.session_state["idees_in_cluster"]:
-            if idee[0] == id_idee:
-                idee[2] = new_score
-                break
-        for cluster in st.session_state["clusters"]:
-            if cluster[0] == st.session_state["id_cluster"]:
-                s=0
-                poids = 0
-                for idee in st.session_state["idees_in_cluster"]:
-                    s += idee[2] * idee[3]
-                    poids += idee[3]
-                assert poids == cluster[2]
-                cluster[3] = s/poids
-                break
-        st.success("Score modifié avec succès")
-        st.rerun()
+    return fig
 
 
-
-
-        
+def rename(id_idee, new_score):
+    url = f"{API_BASE}/document/rescorer_idee"
+    params = {
+        "id_idee": id_idee,
+        "idee_score": new_score
+    }
+    _ = requests.post(url, params=params)
+    for idee in st.session_state["idees_in_cluster"]:
+        if idee[0] == id_idee:
+            idee[2] = new_score
+            break
+    for cluster in st.session_state["clusters"]:
+        if cluster[0] == st.session_state["id_cluster"]:
+            s=0
+            poids = 0
+            for idee in st.session_state["idees_in_cluster"]:
+                s += idee[2] * idee[3]
+                poids += idee[3]
+            assert poids == cluster[2]
+            cluster[3] = s/poids
+            break
+      
 def app():
     st.title("Visualisation des documents")
 
-    try:
-        response = requests.get(f"{API_BASE}/document/documents")
-        documents = response.json()
-    except Exception as e:
-        st.error(f"Erreur lors de la récupération des documents : {e}")
-        documents = []
 
-    try:
-        response = requests.get(f"{API_BASE}/document/questions")
-        questions = response.json()
-    except Exception as e:
-        st.error(f"Erreur lors de la récupération des questions : {e}")
-        questions = []
+    if "documents" not in st.session_state:
+        get_documents()
+    documents = st.session_state["documents"]
+
+    if "questions" not in st.session_state:
+        get_questions()
+    questions = st.session_state["questions"]
 
 
     with st.form("visualisation"):
         col1, col2, col3, col4, col5 = st.columns([3,3,1,1,1])
         with col1:
-            document = st.selectbox("Document", options=[doc[1] for doc in documents])
+            selected_documents = st.multiselect("Document", options=[doc[1] for doc in documents])
         with col2:
-            question = st.selectbox("Question", options=[question[1] for question in questions])
+            selected_questions = st.multiselect("Question", options=[question[1] for question in questions if question[2] == "opinion"])
         with col3:
             nb_clusters = st.number_input("Nombre de clusters", min_value=0, value=10)
         with col4:
@@ -305,35 +334,86 @@ def app():
         with col5:
             submitted = st.form_submit_button("Générer les visuels")
 
+        q_ident = [q for q in questions if q[2] == "identification"]
+        nb_ident=len(q_ident)
+        
+        selected_ident_questions=[]
+        if nb_ident > 0:
+            for i in range(nb_ident):
+                if "possible_answers" not in st.session_state or q_ident[i][0] not in st.session_state["possible_answers"]:
+                    get_possible_answers(q_ident[i][0])
+                
+                possible_answers = list( st.session_state["possible_answers"][q_ident[i][0]].keys() )
+                selected_ident_questions.append(st.multiselect(q_ident[i][1], options=possible_answers))
+
+
     if submitted:
         # Récupérer les ID correspondants aux selections
-        liste_id_doc = [doc[0] for doc in documents if doc[1] == document]
-        liste_id_question = [q[0] for q in questions if q[1] == question]
+        if selected_documents:
+            liste_id_doc = [doc[0] for doc in documents if doc[1] in selected_documents]
+        else:
+            liste_id_doc = [doc[0] for doc in documents]
+
+        if selected_questions:
+            liste_id_question = [q[0] for q in questions if q[1] in selected_questions]
+        else:
+            liste_id_question = [q[0] for q in questions if q[2] == "opinion"]
+
+        questions_filtrees =[]
+        filtres=[]
+        for i in range(nb_ident):
+            if len(selected_ident_questions[i]) > 0:
+                questions_filtrees.append(q_ident[i][0])
+
+                dico=st.session_state["possible_answers"][q_ident[i][0]]
+                text_selected_answers= selected_ident_questions[i]
+                id_selected_answers = [dico[answer] for answer in text_selected_answers]
+                filtres.append(id_selected_answers)
+        
         url = f"{API_BASE}/analyse/create_clusterisation"
-        params = {
+        payload = {
+            "liste_id_doc": liste_id_doc,
+            "liste_id_question": liste_id_question,
+            "questions_filtrees": questions_filtrees,
+            "filtres": filtres,
             "nb_clusters": nb_clusters,
             "distance": distance
         }
-        payload = {
-            "liste_id_doc": liste_id_doc,
-            "liste_id_question": liste_id_question
-        }
-        headers = {
-            "accept": "application/json",
-            "Content-Type": "application/json"
-        }
 
-        response = requests.post(url, params=params, json=payload, headers=headers)
+        headers = {"accept": "application/json", "Content-Type": "application/json"}
+
+        response = requests.post(url, json=payload, headers=headers)
+        if response.json()["status"] == "failure pas assez d'idées":
+            st.error("Il n'y a pas assez d'idées qui correspondent aux filtres")
+            st.stop()
+
         st.session_state["scores"] = np.array(response.json()["scores"])
         st.session_state["clusters"] = response.json()["clusters"]
+        st.session_state["scores_chart"] = create_gradient_pie_chart( st.session_state["scores"])
+        st.session_state["bubble_chart"] = create_bubble_chart(st.session_state["clusters"])
+        st.session_state["id_cluster"] = None
 
     if 'scores' in st.session_state:
         col1, col2= st.columns([2,3])
         with col1:
-            create_gradient_pie_chart( st.session_state["scores"])
+            fig, total_count, score_moyen, score_median, score_std = st.session_state["scores_chart"]
+
+            st.pyplot(fig)
+            st.subheader("Statistiques")
+            col11, col12, col13, col14 = st.columns(4)  
+            with col11:
+                st.metric("Nombre total", f"{total_count:,}")
+            with col12:
+                st.metric("Score moyen", f"{score_moyen:.2f}")
+            with col13:
+                st.metric("Score médian", f"{score_median:.2f}")
+            with col14:
+                st.metric("Écart-type", f"{score_std:.2f}")
+
+
         with col2:
-            #create_word_cloud(clusters)
-            create_bubble_chart(st.session_state["clusters"])
+            fig2 = st.session_state["bubble_chart"]
+            st.plotly_chart(fig2, use_container_width=True, key="scores_chart")
 
 
     if 'clusters' in st.session_state:
@@ -341,9 +421,9 @@ def app():
         with st.form("visualisation_cluster"):
             col1, col2 = st.columns(2)
             with col1:
-                name_cluster = st.selectbox("Cluster", options=[cluster[1] for cluster in clusters])
+                name_cluster = st.selectbox("Thème", options=[cluster[1] for cluster in clusters])
             with col2:
-                submitted_cluster = st.form_submit_button("Observer le cluster")
+                submitted_cluster = st.form_submit_button("Voir les détails du thème")
             
         if submitted_cluster:
             for cluster in clusters:
@@ -358,9 +438,28 @@ def app():
             st.session_state["id_cluster"] = id_cluster
             st.session_state["idees_in_cluster"] = response.json()
 
-    if 'idees_in_cluster' in st.session_state:
+    if 'id_cluster' in st.session_state and st.session_state['id_cluster'] is not None:
+        col1, col2, col3, col4 = st.columns([7,1,1,5])
+        with col1:
+            st.markdown("**Idées**") 
+        with col2:
+            st.markdown("**Occurences**")
+        with col3:
+            st.markdown("**Scores**")
+        with col4:
+            if st.button("**Modifier tout**", key=f"modifier_tout"):
+                for idee in st.session_state["idees_in_cluster"]:
+                    slider_key = f"slider_{idee[0]}"  # génère la clé comme dans la boucle
+                    new_score = st.session_state[slider_key]
+                    if abs(new_score - idee[2]) > 0.05:
+                        rename(idee[0], new_score)
+                st.rerun()
+
+    
         for idee in st.session_state["idees_in_cluster"]:
-            col1, col2, col3, col4 = st.columns([7,1,1,2])
+
+            slider_key = f"slider_{idee[0]}"
+            col1, col2, col3, col4,col5 = st.columns([7,1,1,2,3])
             with col1:
                 st.write(idee[1]) 
             with col2:
@@ -369,7 +468,21 @@ def app():
                 st.write(round(idee[2], 1))
             with col4:
                 if st.button("Modifier", key=f"modifier_{idee[0]}"):
-                    show_rename_dialog(idee[0], idee[1], idee[2])
+                    rename(idee[0], st.session_state[slider_key])
+                    st.rerun()
+            with col5:
+                st.slider(
+                    "Score",
+                    min_value=1.0,
+                    max_value=5.0,
+                    value=float(idee[2]),
+                    step=0.1,
+                    format="%.1f",
+                    key=slider_key,
+                    label_visibility="collapsed"
+                )
+                #idee[2] = st.session_state[slider_key]
+
 
 
 

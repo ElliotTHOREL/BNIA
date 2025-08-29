@@ -1,7 +1,7 @@
 from app.routes import all_routers
 from app.connection import initialize_pool
 from app.database.create import init_bdd
-from app.config import configu
+from app.config import AIManager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,9 +32,8 @@ logging.basicConfig(
 def create_app() -> FastAPI:
     app = FastAPI()
 
-    for key, value in configu().items():
-        setattr(app.state, key, value)
-
+    #Initialisation outils IA
+    app.state.aimanager = AIManager()
 
     # origins = [
     #     "http://localhost:8080",
