@@ -5,6 +5,8 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from typing import List
 
+import time
+import logging
 
 router = APIRouter()
 
@@ -21,8 +23,10 @@ class ClusterRequest(BaseModel):
 
 @router.post("/create_clusterisation")
 async def create_clusterisation_route(request: Request, req: ClusterRequest):
+    start_time = time.time()
+
     ai_manager = request.app.state.aimanager
-    return await find_clusterisation(
+    res = await find_clusterisation(
         req.liste_id_doc,
         req.liste_id_question,
         req.questions_filtrees,
@@ -31,3 +35,6 @@ async def create_clusterisation_route(request: Request, req: ClusterRequest):
         req.distance,
         ai_manager
     )
+    end_time = time.time()
+    logging.info(f"Temps d'exécution : {end_time - start_time} secondes")
+    return res

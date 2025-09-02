@@ -26,7 +26,7 @@ def traiter_texte(texte: str) -> str:
     texte = ''.join(c for c in texte if not unicodedata.combining(c))
     
     # Suppression de la ponctuation finale
-    texte = texte.rstrip(string.punctuation + string.whitespace)
+    texte = texte.rstrip(string.punctuation + string.whitespace).strip()
     
     return texte
 

@@ -1,8 +1,9 @@
 from app.connection import get_db_cursor
-
+from app.database.create import init_bdd
 
 def reset_all():
     with get_db_cursor() as cursor:
+        cursor.execute("""DROP TABLE IF EXISTS jointure_filtration_repondant""")
         cursor.execute("""DROP TABLE IF EXISTS jointure_cluster_idees""")
         cursor.execute("""DROP TABLE IF EXISTS jointure_clusterisation_question""")
         cursor.execute("""DROP TABLE IF EXISTS cluster""")
@@ -21,7 +22,21 @@ def reset_all():
         cursor.execute("""DROP TABLE IF EXISTS repondant""")
         cursor.execute("""DROP TABLE IF EXISTS question""")
         cursor.execute("""DROP TABLE IF EXISTS document""")
+    init_bdd()
 
+def reset_all_clusterisation():
+    with get_db_cursor() as cursor:
+        cursor.execute("""DROP TABLE IF EXISTS jointure_filtration_repondant""")
+        cursor.execute("""DROP TABLE IF EXISTS jointure_cluster_idees""")
+        cursor.execute("""DROP TABLE IF EXISTS jointure_clusterisation_question""")
+        cursor.execute("""DROP TABLE IF EXISTS cluster""")
+        cursor.execute("""DROP TABLE IF EXISTS jointure_filtration_document""")
+        cursor.execute("""DROP TABLE IF EXISTS jointure_filtration_exigence""")
+        cursor.execute("""DROP TABLE IF EXISTS jointure_exigence_reponse""")
+        cursor.execute("""DROP TABLE IF EXISTS clusterisation""")
+        cursor.execute("""DROP TABLE IF EXISTS filtration""")
+        cursor.execute("""DROP TABLE IF EXISTS exigence""")
+    init_bdd()
 
 
 

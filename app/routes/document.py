@@ -1,6 +1,6 @@
-from app.database.read import get_all_documents, get_all_questions, get_all_idees_in_cluster, get_possible_answers
-from app.database.update import import_excel_to_bdd, rename_document, embed_all_answers, analyse_sentiment_all_ideas, rescorer_idee, switch_type_question, merge_questions
-from app.database.delete import  delete_one_document, reset_all, delete_one_question
+from app.database.read import get_all_documents, get_all_questions, get_all_idees_in_cluster, get_possible_answers, get_details_idee
+from app.database.update import import_excel_to_bdd, rename_document, embed_all_answers, analyse_sentiment_all_ideas, rescorer_idee, switch_type_question, merge_questions, de_masquer_cluster
+from app.database.delete import  delete_one_document, reset_all, delete_one_question, reset_all_clusterisation
 
 from fastapi import APIRouter, UploadFile, File, Request, Body
 
@@ -23,6 +23,9 @@ async def get_idees_in_cluster(id_cluster: int):
 async def get_possible_answers_route(id_question: int):
     return get_possible_answers(id_question)
 
+@router.get("/get_details_idee")
+async def get_details_idee_route(id_idee: int, id_clusterisation: int):
+    return get_details_idee(id_idee, id_clusterisation)
 
 @router.post("/rescorer_idee")
 async def rescorer_idee_route(id_idee: int, idee_score: float):
@@ -42,6 +45,9 @@ async def merge_questions_route(data: dict = Body(...)):
     new_question = data.get("new_question")
     return merge_questions(liste_id_questions, new_question)
 
+@router.post("/de_masquer_cluster")
+async def de_masquer_cluster_route(id_cluster: int):
+    return de_masquer_cluster(id_cluster)
 
 
 @router.post("/import_excel")
@@ -68,6 +74,9 @@ async def import_excel_complete(request: Request, file: UploadFile = File(...)):
     analyse_sentiment_all_ideas(ai_manager)
     return {"status": "imported", "name": file.filename}
 
+
+
+
 @router.delete("/delete_one_document")
 async def delete_document(id_document: int):
     return delete_one_document(id_document)
@@ -75,6 +84,11 @@ async def delete_document(id_document: int):
 @router.delete("/delete_one_question")
 async def delete_question_route(id_question: int):
     return delete_one_question(id_question)
+
+@router.delete("/reset_clusterisation")
+async def reset_clusterisation_route():
+    return reset_all_clusterisation()
+
 
 @router.delete("/reset_all")
 async def reset_all_route():

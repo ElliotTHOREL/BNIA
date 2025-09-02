@@ -1,10 +1,10 @@
 from app.connection import get_db_cursor
 from app.domain.embed import embed_answers_with_ai_manager
-from app.domain.analyse_sentiment import analyse_sentiment, analyse_sentiment_with_ai_manager
+from app.domain.analyse_sentiment import  analyse_sentiment_with_ai_manager
 from app.database.delete import delete_one_question
-from app.database.read import get_all_idees
+from app.database.read import get_all_idees, get_all_textes_traites, get_all_textes
 from app.domain.clusterisation import clusterisation, find_representative_idea_with_ai_manager
-from app.domain.tools.text_processor import get_or_create_texte_traite
+from app.domain.tools.text_processor import  traiter_texte
 
 import pandas as pd
 from io import BytesIO
@@ -12,95 +12,129 @@ from fastapi import UploadFile, File
 import json
 
 
-async def import_excel_to_bdd(file: UploadFile = File(...)):
-    name = file.filename
-
+def insert_document(name: str):
     with get_db_cursor() as cursor:
-        cursor.execute("""SELECT COUNT(*) FROM document WHERE name = %s""", (name,))
-        if cursor.fetchone()[0] > 0:
-            return {"status": "already_exists", "name": name}
+        cursor.execute("""SELECT id FROM document WHERE name = %s""", (name,))
+        result = cursor.fetchone()
+        if result:
+            id_document = result[0]
+            return True, id_document
+        else:
+            cursor.execute("""INSERT INTO document (name) 
+                VALUES (%s)""", 
+                (name,))
+            id_document = cursor.lastrowid
+            return False, id_document
 
-    content = await file.read()
-    df = pd.read_excel(BytesIO(content))
-
-
+def insert_questions(questions: list[str]):
     with get_db_cursor() as cursor:
-        cursor.execute("""INSERT INTO document
-        (name) VALUES (%s)""", 
-        (name,))
-        id_document = cursor.lastrowid
-
-    # Création des questions
-        questions = list(df.columns[:])
-        question_ids = {}
-        for id_ds_doc, q in enumerate(questions):
+        id_question_dict = {}
+        for i, question in enumerate(questions):
             cursor.execute("""INSERT INTO question
                 (question, type) VALUES (%s, %s)
                 ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)""",
-                (q, "opinion"))
+                (question, "opinion"))
             id_question = cursor.lastrowid
 
-            question_ids[id_ds_doc] = id_question
+            id_question_dict[i] = id_question
 
+        return id_question_dict
 
-        repondant_data = [(id_document, index) for index in df.index]
-
-        cursor.executemany("""INSERT INTO repondant
-            (id_document, num_ds_document) VALUES (%s, %s)""",
-            repondant_data)
-
+def insert_repondants(id_document: int, indexes: list[int]):
+    """Tous les répondants sont nouveaux. On crée juste n nouveaux répondants"""
+    data = [(id_document, index) for index in indexes]
+    with get_db_cursor() as cursor:
+        cursor.executemany("""INSERT INTO repondant (id_document, num_ds_document) 
+            VALUES (%s, %s)""",
+            data)
         cursor.execute("""
-        SELECT id, num_ds_document FROM repondant WHERE id_document = %s
-        """, (id_document,))
-        repondants_dict = {row[1]: row[0] for row in cursor.fetchall()}
+            SELECT id, num_ds_document FROM repondant WHERE id_document = %s
+            """, (id_document,))
+        id_repondants_dict = {row[1]: row[0] for row in cursor.fetchall()}
+        return id_repondants_dict
 
+class ConteneurTextes:
+    def __init__(self):
+        self.textes_en_base =  None  #Set de textes
+        self.textes_traites_en_base = None #Set de textes
+        self.textes_traites_to_add=[] #Liste de textes
+        self.textes_to_add=[] #Liste de (texte, texte_traite)
+        self.reponses_to_add=[] #Liste de (id_q, id_rd, texte)
+    
+    def get_textes_en_base(self):
+        if self.textes_en_base is None:
+            self.textes_en_base = {row[1] for row in get_all_textes()}
+        return self.textes_en_base
+    
+    def get_textes_traites_en_base(self):
+        if self.textes_traites_en_base is None:
+            self.textes_traites_en_base = {row[1] for row in get_all_textes_traites()}
+        return self.textes_traites_en_base
+    
+    def add_all(self):
+        with get_db_cursor() as cursor:
+            cursor.executemany("""INSERT INTO texte_traite (texte_traite) 
+                        VALUES (%s)""",
+                        self.textes_traites_to_add)
 
-        # Récupérer les textes existants
-        cursor.execute("SELECT texte FROM texte_reponse")
-        existing_texts = [row[0] for row in cursor.fetchall()]
+        dico_textes_traites = {row[1]: row[0] for row in get_all_textes_traites()}
 
-        new_texts = []
-        response_data = []
+        with get_db_cursor() as cursor:
+            cursor.executemany("""INSERT INTO texte_reponse (id_texte_traite, texte) 
+                        VALUES (%s, %s)""", 
+                        [(dico_textes_traites[texte_traite], texte) for texte, texte_traite in self.textes_to_add])
+            
+        dico_textes = {row[1]: row[0] for row in get_all_textes()}
 
-        # Parcourir le DataFrame
-        for index, row in df.iterrows():
-            id_repondant = repondants_dict[index]
-            for id_ds_doc, id_question in question_ids.items():
-                val = row.iloc[id_ds_doc]
-                reponse = str(val)
-                if pd.isna(val):
-                    continue
-                if reponse not in existing_texts:
-                    # Créer le texte traité correspondant
-                    id_texte_traite = get_or_create_texte_traite(reponse, cursor)
-                    new_texts.append((id_texte_traite, reponse))
-                    existing_texts.append(reponse)
-                response_data.append((id_question, id_repondant, reponse))
+        with get_db_cursor() as cursor:
+            cursor.executemany("""INSERT INTO reponse (id_question, id_repondant, id_texte_reponse) 
+                        VALUES (%s, %s, %s)""", 
+                        [(id_question, id_repondant,dico_textes[texte]) for id_question, id_repondant, texte in self.reponses_to_add])
+                
+async def import_excel_to_bdd(file: UploadFile = File(...)):
+    name = file.filename
 
-        # Insérer les nouveaux textes
-        if new_texts:
-            cursor.executemany(
-                "INSERT INTO texte_reponse (id_texte_traite, texte) VALUES (%s, %s)",
-                new_texts
-            )
+    already_exists, id_document = insert_document(name)
+    if already_exists:
+            return {"status": "already_exists", "name": name}
 
-        # Récupérer les IDs des textes
-        cursor.execute("SELECT id, texte FROM texte_reponse")
-        texte_to_id = {row[1]: row[0] for row in cursor.fetchall()}
+    # On lit le doc Excel
+    content = await file.read()
+    df = pd.read_excel(BytesIO(content))
 
-        # Préparer les données finales pour insertion dans reponse
-        final_response_data = [
-            (id_question, id_repondant, texte_to_id[texte])
-            for id_question, id_repondant, texte in response_data
-        ]
+    # On récupère les questions
+    questions = list(df.columns[:])
+    id_question_dict = insert_questions(questions)
 
-        # Insérer les réponses
-        cursor.executemany(
-            "INSERT INTO reponse (id_question, id_repondant, id_texte_reponse) VALUES (%s, %s, %s)",
-            final_response_data
-        )
+    # On insert les repondants
+    id_repondants_dict = insert_repondants(id_document, df.index)
 
-    return {"status": "imported", "name": name, "rows": len(df)}
+    #Objet qui permet l'ajout des réponses
+    conteneur_textes = ConteneurTextes()
+    #On sélectionne ce qui faut ajouter
+    for index, row in df.iterrows():
+        id_repondant = id_repondants_dict[index]
+        for index_col, col in enumerate(df.columns):
+            id_question = id_question_dict[index_col]
+
+            val = row.iloc[index_col]
+            if pd.isna(val):
+                continue
+            texte = str(val)
+
+            if texte not in conteneur_textes.get_textes_en_base():
+                texte_traite = traiter_texte(texte)
+                if texte_traite not in conteneur_textes.get_textes_traites_en_base():
+                    conteneur_textes.textes_traites_to_add.append((texte_traite,))
+                    conteneur_textes.get_textes_traites_en_base().add(texte_traite)
+                
+                conteneur_textes.textes_to_add.append((texte, texte_traite))
+                conteneur_textes.get_textes_en_base().add(texte)
+            
+            conteneur_textes.reponses_to_add.append((id_question,id_repondant,texte))
+    #On ajoute tout en 1 fois pour optimiser les opérations
+    conteneur_textes.add_all()
+    return {"status": "import_done", "name": name}
 
 def switch_type_question(id_question: int):
     with get_db_cursor() as cursor:
@@ -180,20 +214,24 @@ def rescorer_idee(id_idee: int, idee_score: float):
                 (new_score, id_cluster)
             )
 
+def de_masquer_cluster(id_cluster: int):
+    with get_db_cursor() as cursor:
+        cursor.execute("""UPDATE cluster SET masque = NOT masque WHERE id = %s""",
+            (id_cluster,)
+        )
+
 async def embed_all_answers(ai_manager):
     with get_db_cursor() as cursor:
         # Récupérer les textes qui n'ont pas encore d'idées embeddées
         cursor.execute("""
-            SELECT DISTINCT tr.id, tr.texte 
-            FROM texte_reponse tr
-            LEFT JOIN jointure_idee_texte jit ON tr.id_texte_traite = jit.id_texte_traite
-            WHERE jit.id_texte_traite IS NULL
+            SELECT tt.id, tt.texte_traite
+            FROM texte_traite tt
+            WHERE tt.idees_extraites = FALSE
         """)
-        liste_tuples = cursor.fetchall()
-        liste_ids_answers = [tuple[0] for tuple in liste_tuples]
-        liste_answers = [tuple[1] for tuple in liste_tuples]
+        res = cursor.fetchall()
+        liste_ids, liste_textes = zip(*res)
 
-        liste_results = await embed_answers_with_ai_manager(liste_answers, ai_manager)
+        liste_results = await embed_answers_with_ai_manager(liste_textes, ai_manager)
         #Une liste de triplets (indice_reponse, texte, embed)
 
         for indice_reponse, texte, embed in liste_results:
@@ -205,19 +243,15 @@ async def embed_all_answers(ai_manager):
             )
             id_idee = cursor.lastrowid
             
-            # Créer la jointure avec le texte traité
-            id_texte_traite = get_or_create_texte_traite(texte, cursor)
             cursor.execute(
                 """INSERT INTO jointure_idee_texte (id_texte_traite, id_idee)
                 VALUES (%s, %s)""",
-                (id_texte_traite, id_idee)
+                (liste_ids[indice_reponse], id_idee)
             )
 
     return {"status": "embeded", "number_results": len(liste_results)}
 
 def analyse_sentiment_all_ideas(ai_manager):
-
-
     with get_db_cursor() as cursor:
         cursor.execute("""SELECT id, idee_texte 
             FROM idee_embedded 
@@ -234,7 +268,6 @@ def analyse_sentiment_all_ideas(ai_manager):
             data_to_insert
         )
     return {"status": "analyse_sentiment_done", "number_analyses": len(liste_ids_ideas)}
-
 
 def create_exigence(id_question: int, liste_id_answer: list[int]):
     with get_db_cursor() as cursor:
@@ -278,10 +311,53 @@ def create_filtration(liste_id_document: list[int], liste_id_exigence: list[int]
             data_to_insert_2
         )
 
-        return id_filtration
+    _calculer_repondants(id_filtration)
 
+    return id_filtration
 
+def _calculer_repondants(id_filtration: int):
+    with get_db_cursor() as cursor:
+        cursor.execute(f"""SELECT COUNT(*) 
+            FROM jointure_filtration_exigence 
+            WHERE id_filtration = %s""",
+             (id_filtration,)
+             )
+        nb_exigence = cursor.fetchone()[0]
 
+        if nb_exigence == 0:
+            cursor.execute(f"""SELECT rd.id 
+                FROM repondant as rd
+                JOIN document as doc ON rd.id_document = doc.id
+                JOIN jointure_filtration_document as jfd ON doc.id = jfd.id_document
+                WHERE jfd.id_filtration = %s""",
+                 (id_filtration,)
+                 )
+            liste_id_repondant = [row[0] for row in cursor.fetchall()]
+        else:
+            cursor.execute(f"""SELECT rd.id 
+                FROM repondant as rd
+                JOIN document as doc ON rd.id_document = doc.id
+                JOIN jointure_filtration_document as jfd ON doc.id = jfd.id_document
+                JOIN jointure_filtration_exigence as jfe ON jfd.id_filtration = jfe.id_filtration
+                JOIN exigence as e ON jfe.id_exigence = e.id
+                JOIN jointure_exigence_reponse as jer ON e.id = jer.id_exigence
+
+                JOIN reponse as r2 ON  r2.id_repondant = rd.id AND r2.id_texte_reponse = jer.id_reponse 
+                                   AND r2.id_question = e.id_question
+                                   AND r2.id_texte_reponse = jer.id_reponse
+                WHERE jfd.id_filtration = %s
+                
+                GROUP BY rd.id
+                HAVING COUNT(DISTINCT e.id) = %s
+                """,
+                 (id_filtration, nb_exigence)
+                 )
+            liste_id_repondant = [row[0] for row in cursor.fetchall()]
+
+        cursor.executemany(
+            """INSERT INTO jointure_filtration_repondant (id_filtration, id_repondant) VALUES (%s, %s)""",
+            [(id_filtration, id_repondant) for id_repondant in liste_id_repondant]
+        )
 
 async def create_clusterisation(liste_id_question, id_filtration, ai_manager, nb_clusters=None, distance="cosine"):
     liste_idees=get_all_idees(liste_id_question, id_filtration)
@@ -296,7 +372,7 @@ async def create_clusterisation(liste_id_question, id_filtration, ai_manager, nb
         return -1
 
 
-    ids, _, _, _,  = zip(*liste_idees)
+    ids, _, _, _  = zip(*liste_idees)
 
     labels, centroids = clusterisation(liste_idees,n_clusters=nb_clusters, distance=distance)
     rep_idees = await find_representative_idea_with_ai_manager(liste_idees, labels, ai_manager)

@@ -2,7 +2,7 @@ from sklearn.cluster import KMeans
 from hdbscan import HDBSCAN
 
 import numpy as np
-import openai
+import random
 
 def compute_hdbscan_centroids(embeddings, labels):
     """
@@ -113,20 +113,27 @@ async def find_llm_theme_with_ai_manager(textes, ai_manager):
     """
     Trouve le thème des idées à l'aide d'un AIManager.
     """
+    if len(textes) > 500:
+        textes = random.sample(textes, 500 )
 
     prompt_system = """
-    Tu es un expert en analyse de documents.
-    Ton rôle est de trouver un titre pour résumer un thème d'idées.
+    Tu es un expert en analyse d'enquête de satisfaction.
+    Ton rôle est de trouver un titre pour résumer un ensemble de réponses d'utilisateurs.
 
-    Le nom du thème doit être court et simple.
-    Le nom doit synthétiser toutes les idées du thème.
+    Tu dois trouver un nom qui synthétise le thème ou le sentiment général des réponses.
+    Le nom doit être court et simple.
+    Le nom doit synthétiser toutes les réponses.
+
+    Si un terme ressort très majoritairement dans les réponses, n'hésite pas à en faire le nom du thème.
+
+    IMPORTANT:
+    Réponds uniquement avec le nom trouvé.
     """
 
-    prompt_user = f"""
-    Voici les idées :
-
-    {'\n'.join(textes)}
-    """
+    prompt_user = (
+        "Réponses :\n"
+        f"{chr(10).join(f'- {idee}' for idee in textes)}\n\n"
+    )
 
     messages = [
         {"role": "system", "content": prompt_system},

@@ -59,7 +59,7 @@ class To_embed:
             self.add_answer(answer)
     
     def add_answer(self, answer: str):
-        if self.current_batch_size + len(answer) > self.limit_batch_size:
+        if self.current_batch_size + len(answer) > self.limit_batch_size or len(self.current_batch) > 30:
             self.batches.append(self.current_batch)
             self.current_batch = [answer]
             self.current_batch_size = len(answer)

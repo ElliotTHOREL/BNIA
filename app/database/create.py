@@ -33,6 +33,7 @@ def init_bdd():
         CREATE TABLE IF NOT EXISTS texte_traite(
             id INT AUTO_INCREMENT PRIMARY KEY,
             texte_traite TEXT NOT NULL,
+            idees_extraites BOOLEAN DEFAULT FALSE,
             UNIQUE (texte_traite)
         )
         """)
@@ -155,6 +156,7 @@ def init_bdd():
             texte TEXT,
             taille INT,
             score FLOAT,
+            masque BOOLEAN DEFAULT FALSE,
             FOREIGN KEY (id_clusterisation) REFERENCES clusterisation(id) ON DELETE CASCADE
         )
         """)
@@ -166,6 +168,16 @@ def init_bdd():
             occurrences INT,
             FOREIGN KEY (id_cluster) REFERENCES cluster(id) ON DELETE CASCADE,
             FOREIGN KEY (id_idee) REFERENCES idee_embedded(id) ON DELETE CASCADE
+        )
+        """)
+
+        #ATTENTION : Table de redondance
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS jointure_filtration_repondant(
+            id_filtration INT,
+            id_repondant INT,
+            FOREIGN KEY (id_filtration) REFERENCES filtration(id) ON DELETE CASCADE,
+            FOREIGN KEY (id_repondant) REFERENCES repondant(id) ON DELETE CASCADE
         )
         """)
 
